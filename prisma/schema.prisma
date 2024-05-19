@@ -14,13 +14,12 @@ datasource db {
 }
 
 model User {
-  id                  String             @id @default(cuid())
-  email               String             @unique
+  id                  String              @id @default(cuid())
+  email               String              @unique
   password            String
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
-  webAuthnChallenge   WebAuthnChallenge? @relation(fields: [webAuthnChallengeId], references: [id])
-  webAuthnChallengeId String?            @unique
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  webAuthnCredentials WebAuthnChallenge[]
 }
 
 model WebAuthnChallenge {
@@ -28,5 +27,6 @@ model WebAuthnChallenge {
   challenge String
   passKey   Json
   createdAt DateTime @default(now())
-  user      User?
+  User      User?    @relation(fields: [userId], references: [id])
+  userId    String?
 }

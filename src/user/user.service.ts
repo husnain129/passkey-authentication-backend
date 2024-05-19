@@ -28,15 +28,14 @@ export class UserService {
     const newUser = await this.prisma.user.create({
       data: {
         ...createUserDto,
-        webAuthnChallenge: {
-          create: {
-            challenge: challengePayload.challenge,
-            passKey: {},
-          },
-        },
       },
-      include: {
-        webAuthnChallenge: true,
+    });
+
+    await this.prisma.webAuthnChallenge.create({
+      data: {
+        challenge: challengePayload.challenge,
+        passKey: null,
+        User: { connect: { id: newUser.id } },
       },
     });
 
@@ -44,69 +43,70 @@ export class UserService {
   }
 
   async registerVerify(userId: string, credential: any) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        webAuthnChallenge: true,
+    const chellanges = await this.prisma.webAuthnChallenge.findMany({
+      where: {
+        userId,
       },
     });
 
-    if (!user) {
+    if (chellanges.length === 0) {
       throw new HttpException('User not found', 404);
     }
 
-    const { verified, registrationInfo } = await this.webAUTH.verifyRegisration(
-      {
-        challenge: user.webAuthnChallenge.challenge as string,
-        credential,
-      },
-    );
+    for (const chellage of chellanges) {
+      const { verified, registrationInfo } =
+        await this.webAUTH.verifyRegisration({
+          challenge: chellage.challenge as string,
+          credential,
+        });
 
-    if (!verified) {
-      throw new HttpException('WebAuthn verification failed', 400);
+      if (!verified) {
+        continue;
+      }
+
+      await this.prisma.webAuthnChallenge.update({
+        where: { id: chellage.id },
+        data: {
+          passKey: this.webAUTH.formatPassKeyCredentialToJson({
+            registrationInfo,
+          }),
+        },
+      });
+
+      return { verified: true };
     }
 
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        webAuthnChallenge: {
-          update: {
-            passKey: this.webAUTH.formatPassKeyCredentialToJson({
-              registrationInfo,
-            }),
-          },
-        },
-      },
-    });
-
-    return { verified: true };
+    return { verified: false };
   }
 
   async loginChallenge(email: string) {
     const user = await this.prisma.user.findUnique({
       where: { email },
-      include: {
-        webAuthnChallenge: true,
-      },
     });
 
     if (!user) {
       throw new HttpException('User not found', 404);
     }
 
-    const options = await this.webAUTH.loginOptions();
-
-    await this.prisma.user.update({
-      where: { email },
-      data: {
-        webAuthnChallenge: {
-          update: {
-            challenge: options.challenge,
-          },
-        },
+    const chellanges = await this.prisma.webAuthnChallenge.findMany({
+      where: {
+        userId: user.id,
       },
     });
 
+    if (chellanges.length === 0) {
+      throw new HttpException('User not found', 404);
+    }
+
+    const options = await this.webAUTH.loginOptions();
+    for (const chellage of chellanges) {
+      await this.prisma.webAuthnChallenge.update({
+        where: { id: chellage.id },
+        data: {
+          challenge: options.challenge,
+        },
+      });
+    }
     return options;
   }
 
@@ -115,35 +115,42 @@ export class UserService {
       where: {
         email,
       },
-      include: {
-        webAuthnChallenge: true,
-      },
     });
 
     if (!user) {
       throw new HttpException('User not found', 404);
     }
 
-    const passKeyData = user.webAuthnChallenge.passKey as any;
-    const transformedPassKey = this.webAUTH.formatPassKeyCredentialToBuffer({
-      passKeyData,
+    const chellanges = await this.prisma.webAuthnChallenge.findMany({
+      where: {
+        userId: user.id,
+      },
     });
 
-    const { verified } = await verifyAuthenticationResponse({
-      expectedChallenge: user.webAuthnChallenge.challenge as string,
-      expectedOrigin: 'http://localhost:3000',
-      expectedRPID: 'localhost',
-      response: credential,
-      authenticator: transformedPassKey as any,
-    });
-
-    if (!verified) {
-      throw new HttpException('WebAuthn verification failed', 400);
+    if (chellanges.length === 0) {
+      throw new HttpException('User not found', 404);
     }
 
-    delete user.webAuthnChallenge;
-    delete user.webAuthnChallengeId;
+    for (const chellage of chellanges) {
+      const passKeyData = chellage.passKey as any;
+      const transformedPassKey = this.webAUTH.formatPassKeyCredentialToBuffer({
+        passKeyData,
+      });
 
-    return { verified: true, user };
+      const { verified } = await verifyAuthenticationResponse({
+        expectedChallenge: chellage.challenge as string,
+        expectedOrigin: 'http://localhost:3000',
+        expectedRPID: 'localhost',
+        response: credential,
+        authenticator: transformedPassKey as any,
+      });
+
+      if (!verified) {
+        continue;
+      }
+
+      return { verified: true, user };
+    }
+    return { verified: false, user };
   }
 }
