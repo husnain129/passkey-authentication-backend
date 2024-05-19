@@ -1,6 +1,5 @@
 import { HttpException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { verifyAuthenticationResponse } from '@simplewebauthn/server';
 import { PrismaService } from 'src/prisma.service';
 import { WebAuthn } from './web-authn';
 
@@ -137,12 +136,10 @@ export class UserService {
         passKeyData,
       });
 
-      const { verified } = await verifyAuthenticationResponse({
-        expectedChallenge: chellage.challenge as string,
-        expectedOrigin: 'http://localhost:3000',
-        expectedRPID: 'localhost',
-        response: credential,
-        authenticator: transformedPassKey as any,
+      const { verified } = await this.webAUTH.loginVerify({
+        chellage,
+        credential,
+        transformedPassKey,
       });
 
       if (!verified) {

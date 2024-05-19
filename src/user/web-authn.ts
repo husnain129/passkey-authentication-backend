@@ -1,15 +1,17 @@
 import {
   generateAuthenticationOptions,
   generateRegistrationOptions,
+  verifyAuthenticationResponse,
   verifyRegistrationResponse,
 } from '@simplewebauthn/server';
 
 export class WebAuthn {
   constructor() {}
 
-  private rpID = 'localhost';
-  private rpName = 'My Localhost Machine';
-  private expectedOrigin = 'http://localhost:3000';
+  private rpID = process.env.RP_ID || 'localhost';
+  private rpName = process.env.RP_NAME || 'localhost';
+  private expectedOrigin =
+    process.env.EXPECTED_ORIGIN || 'http://localhost:3000';
 
   async registrationOptions({ email }: { email: string }) {
     try {
@@ -41,6 +43,24 @@ export class WebAuthn {
   async loginOptions() {
     return await generateAuthenticationOptions({
       rpID: 'localhost',
+    });
+  }
+
+  async loginVerify({
+    chellage,
+    credential,
+    transformedPassKey,
+  }: {
+    chellage: any;
+    credential: any;
+    transformedPassKey: any;
+  }) {
+    return await verifyAuthenticationResponse({
+      expectedChallenge: chellage.challenge as string,
+      expectedOrigin: this.expectedOrigin,
+      expectedRPID: this.rpID,
+      response: credential,
+      authenticator: transformedPassKey,
     });
   }
 
