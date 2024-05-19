@@ -1,6 +1,7 @@
 /* eslint-disable no-var */
 import { NestFactory } from '@nestjs/core';
 import * as crypto from 'crypto';
+import * as dotenv from 'dotenv';
 import { AppModule } from './app.module';
 
 declare global {
@@ -13,6 +14,8 @@ if (!globalThis.crypto) {
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  dotenv.config();
+
   app.enableCors({
     origin: '*',
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
